@@ -1,0 +1,36 @@
+Package: IWHMB
+Title: Individual Weighted Hallmark Gene Set Mutation Burden
+Version: 1.0
+Author: YuHone Huang
+Authors@R: 
+    person("YuHong", "Huang", role = c("aut", "cre"), email = "1395214203@qq.com")
+Description: Individual Weighted Hallmark Gene Set Mutation Burden.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.2
+Suggests: 
+    roxygen2
+Imports: 
+    magrittr,
+    rlang (>= 0.4.11),
+    dplyr,
+    methods,
+    data.table,
+    SummarizedExperiment,
+    GenomicFeatures,
+    GenomicRanges,
+    tidyfst,
+    IRanges,
+    S4Vectors,
+    purrr,
+    stringr,
+    tibble,
+    rtracklayer,
+    igraph,
+    ConsensusClusterPlus,
+    pvclust,
+    pheatmap,
+    poweRlaw,
+    ggplot2,
+    cowplot
