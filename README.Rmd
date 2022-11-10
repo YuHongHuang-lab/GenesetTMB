@@ -1,5 +1,5 @@
 ---
-title: "IWHMB"
+title: "Weighted Hallmark Gene Set Mutation burden"
 author: YuHong Huang
 data: 2022/10/1
 output: github_document
@@ -16,13 +16,18 @@ knitr::opts_chunk$set(
 )
 ```
 
-# IWHMB
+# Package name is IWHMB
 
 The goal of IWHMB is to calculate Individual Weighted Hallmark Gene Set Mutation burden,Details of algorithm principles will be further published after the article is published
 
 ## Installation
 
 You can install the development version of IWHMB thrugh Through github or source code
+```{r}
+
+```
+
+
 
 
 ## Example
