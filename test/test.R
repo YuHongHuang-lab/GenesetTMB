@@ -6,7 +6,7 @@
 #devtools::load_all()
 #install.packages("rmarkdown")
 
-devtools::install_github("YuHongHuang-lab/IWMHB")
+devtools::install_github("YuHongHuang-lab/IWHMB")
 
 
 library(IWHMB)

@@ -255,10 +255,10 @@
 #' @import poweRlaw
 .Plaw_pvalue = function(x, nthreads){
   x = x[x!=0]
-  m_pl = displ$new(x)
-  est = estimate_xmin(m_pl)
+  m_pl = poweRlaw::displ$new(x)
+  est = poweRlaw::estimate_xmin(m_pl)
   m_pl$setXmin(est)
-  bs_p = bootstrap_p(m_pl, threads = nthreads)$p
+  bs_p = poweRlaw::bootstrap_p(m_pl, threads = nthreads)$p
   return(bs_p)
 }
 

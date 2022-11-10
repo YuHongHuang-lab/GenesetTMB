@@ -151,14 +151,8 @@ setMethod("SelectBestClusterNum", "PathObject", function(obj, method="hclust",
   cluster <- NULL
   mat = obj@module1$pathway_mutscore_stdrow
   if (method=="hclust"){
-    p1 = pheatmap::pheatmap(mat, show_rownames = TRUE,
-                            show_colnames = FALSE,
-                            cluster_rows = TRUE,
-                            cluster_cols = TRUE,
-                            cutree_cols = k,
-                            clustering_method = "complete",
-                            clustering_distance_rows = "euclidean")
-    cluster_row = p1$tree_col
+
+    cluster_row = stats::hclust(stats::dist(t(mat), method = "euclidean"), method = "complete")
     cluster_id = stats::cutree(cluster_row, k = k)
 
     annotation_col = data.frame(cluster=as.character(cluster_id), row.names = names(cluster_id))

@@ -18,16 +18,14 @@ knitr::opts_chunk$set(
 
 # Package name is IWHMB
 
-The goal of IWHMB is to calculate Individual Weighted Hallmark Gene Set Mutation burden,Details of algorithm principles will be further published after the article is published
+The goal of IWHMB is to calculate Individual Weighted Hallmark Gene Set Mutation burden,Details of algorithm principles will be further published after the article is published. However, due to time constraints, IWHMB currently refers to supporting Windows systems, and this problem will be solved in later
 
 ## Installation
 
 You can install the development version of IWHMB thrugh Through github or source code
 ```{r}
-
+#devtools::install_github("YuHongHuang-lab/IWHMB") #download from github
 ```
-
-
 
 
 ## Example
@@ -43,19 +41,227 @@ my_pal = my_pal[!duplicated(my_pal)]
 
 
 ### Creat a PathObject
+
+Please change the file path to your own
+
 ```{r example, warning=FALSE}
 library(IWHMB)
-TCGA_PathObj = CreatePathObject(gmt_path="test/data/h.all.v7.4.symbols.gmt",
-                                gene_exp_counts='test/data/TCGA_HNSC_gene_exp_count.csv',
-                                gene_map='test/data/Homo_sapiens.GRCh38.99.chr.gtf',
-                                gene_exp_TPM="test/data/TCGA_HNSC_gene_exp_TPM_tumor.csv",
-                                ppi_data_path="test/data/ppi_dataset_all.txt",
+TCGA_PathObj = CreatePathObject(gmt_path="E:/source_code/data/h.all.v7.4.symbols.gmt",
+                                gene_exp_counts='E:/source_code/data/TCGA_HNSC_gene_exp_count.csv',
+                                gene_map='E:/source_code/data/Homo_sapiens.GRCh38.99.chr.gtf',
+                                gene_exp_TPM="E:/source_code/data/TCGA_HNSC_gene_exp_TPM_tumor.csv",
+                                ppi_data_path="E:/source_code/data/ppi_dataset_all.txt",
                                 cor_method=1,
-                                mut_exp="test/data/TCGA-HNSC_UCSC.varscan2_snv.tsv.gz",
+                                mut_exp="E:/source_code/data/TCGA-HNSC_UCSC.varscan2_snv.tsv.gz",
                                 count_log=FALSE,
                                 TPM_log=FALSE,
                                 GeneSetCollect=FALSE,
                                 sep = "\t")
 ```
 
+
+### Calculate the network Features of the Cancer Pathway Network or Hallmark Gene Set Network
+
+```{r, warning=FALSE, include=FALSE}
+library(poweRlaw)
+TCGA_PathObj = NetFeatureCalculate(TCGA_PathObj)
+```
+
+
+### Plot Network Feature
+
+```{r, warning=FALSE}
+plot_point_samllworld(TCGA_PathObj, my_pal=my_pal) # Small world
+
+plot_point_fetsig(TCGA_PathObj, my_pal=my_pal) #Network Significance
+```
+
+
+### Calculation of IWHMB for every patient
+
+```{r, warning=FALSE, include=FALSE}
+TCGA_PathObj = DegreePathmutscore(TCGA_PathObj)
+```
+
+
+### Tumor molecular subtype based on pathway mutation. two Cluster method: 1 Consensus clustering 2 hierarchical clustering
+
+```{r, warning=FALSE}
+dir.create("test/ConsensusCluster")
+
+# Consensus clustering 
+TCGA_PathObj = ConsensusCluster(obj = TCGA_PathObj, 
+                                maxK = 9, 
+                                repcount = 50, 
+                                pSample = 0.8, 
+                                pRow = 1, 
+                                distance = 'euclidean', 
+                                clusterAlg = 'km',
+                                seed = 123456,
+                                out_dir = "test/ConsensusCluster")
+
+# Calculation of ICI(Consensus score)
+TCGA_PathObj = calculate_ICI(TCGA_PathObj)
+```
+
+
+### hierarchical clustering Computing the uncertainty of clustering using pvcluster function
+
+```{r}
+TCGA_PathObj = Hclust(TCGA_PathObj, nboot = 10)
+```
+
+
+### Select the number of clusters according to the clustering method, and draw the clustering heat map
+
+```{r}
+TCGA_PathObj = SelectBestClusterNum(obj = TCGA_PathObj,
+                                    method="hclust",
+                                    k=12)
+```
+
+
+### The relationship between gene somatic cell mutation and Pathway Network or Hallmark Gene Set Network
+
+#### Somatic mutation data processing
+
+```{r, warning=FALSE, include=FALSE}
+# Somatic mutation data processing
+library(data.table)
+library(tidyverse)
+mut_exp_TCGA = fread("E:/source_code/data/TCGA.HNSC.varscan.5296cf00-4d8c-4db3-80d7-930a4b44f90d.DR-10.0.somatic.maf",
+                     header = TRUE)
+mut_exp_TCGA = mut_exp_TCGA[mut_exp_TCGA$Variant_Classification!="Silent", ]
+classification = as.data.frame(table(mut_exp_TCGA$Variant_Classification))
+mut_exp_TCGA$mut_classifcation = if_else(mut_exp_TCGA$Variant_Classification%in%c("3'Flank",
+                                                                                  "3'UTR",
+                                                                                  "5'Flank",
+                                                                                  "5'UTR",
+                                                                                  "Intron",
+                                                                                  "Translation_Start_Site"),
+                                         "non_coding", "coding")
+mut_exp_TCGA = mut_exp_TCGA[, c("Hugo_Symbol", "mut_classifcation")]
+
+mut_classifcation = mut_exp_TCGA
+```
+
+####
+Distribution of coding and non coding mutations in networks
+
+```{r}
+plot_mut_classification(obj = TCGA_PathObj, my_pal, mut_classifcation)
+```
+
+
+####
+Relationship between somatic Mutation and Network
+
+```{r}
+plot_mut_distribution(obj = TCGA_PathObj, my_pal, mut_classifcation)
+```
+
+
+#### Enrichment of mutation in the network
+
+```{r}
+mut_enrich(obj = TCGA_PathObj, my_pal=my_pal, mut_classifcation=mut_classifcation,
+           degree=2)
+
+```
+
+
+#### mean Pathway or Hallmark Gene Set mutation number per patient
+
+```{r, warning=FALSE, include=FALSE}
+
+# plot function
+plot_bar = function(df, my_pal){
+
+  colnames(df) = c("pathid", "FDR", "cluster")
+  #df$FDR = -log10(df$FDR)
+  df = arrange(df, desc(FDR))
+  df$pathid = factor(df$pathid,
+                     levels = df$pathid)
+
+  theme_main = function(){
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(size = 8, colour = "black"),
+      axis.text.y = element_text(size = 8, colour = "black"),
+      panel.border = element_rect(size = 0.7, linetype = 'solid', colour = "black"),
+      #legend.position = 'right'
+    )
+  }
+
+  theme_legend = function(){
+    theme(
+      legend.position = 'top',
+      legend.direction = "horizontal"
+    )
+  }
+
+  ggplot(df, aes(pathid, FDR))+geom_col(aes(fill=cluster), width = 0.4)+
+    scale_fill_manual(values = c(my_pal[1], "gray60", my_pal[2]))+
+    ylab("FDR")+xlab("")+scale_y_continuous(expand = c(0, 0))+
+    theme_bw()+
+    ggpubr::rotate_x_text(angle = 45)+
+    geom_hline(yintercept = c(1.5, 2),
+               linetype="dotdash", color='gray30')+
+    theme_main()+theme_legend()
+}
+
+
+# Pathway data Prepare
+library(GSEABase)
+gmt = getGmt("E:/source_code/data/h.all.v7.4.symbols.gmt")
+name_id = names(gmt)
+gmt = lapply(gmt, function(x)x@geneIds)
+names(gmt) = name_id
+mut_exp = fread("E:/source_code/data/TCGA-HNSC_UCSC.varscan2_snv.tsv.gz", header = TRUE,
+                data.table = FALSE)
+mut_exp = mut_exp[mut_exp$effect!="synonymous_variant", ]
+mut_exp = mut_exp[, c(1, 2)]
+mut_list = split(mut_exp$gene, mut_exp$Sample_ID)
+
+outTab_list = list()
+for (geneset in names(gmt)){
+  outTab_tmp = data.frame()
+  i = 0
+  for (id in names(mut_list)){
+    i = i+1
+    geneset_tmp = gmt[[geneset]]
+    mut_genes = mut_list[[id]]
+    com_id = intersect(geneset_tmp, mut_genes)
+    outTab_tmp = rbind(outTab_tmp, cbind(sample_id=id, genesetid=geneset, len=length(com_id)))
+    tmp_id = str_c(geneset, i, sep = "_")
+    print(tmp_id)
+  }
+  outTab_list[[geneset]] = outTab_tmp
+}
+
+outTab_list = lapply(outTab_list, function(x){
+  x$len = as.numeric(x$len)
+  x = x[x$len>0, ]
+  x = x[, c(2,3)]
+  return(x)
+})
+
+outTab_df = do.call("rbind", outTab_list)
+outTab_df_mean = outTab_df%>%group_by(genesetid)%>%summarise(mean=mean(len))
+
+
+outTab_df_mean$direction = case_when(outTab_df_mean$mean>=2~"high",
+                                     outTab_df_mean$mean>=1.5&
+                                       outTab_df_mean$mean<2~"middle",
+                                     outTab_df_mean$mean<1.5~"low")
+outTab_df_mean_TCGA = outTab_df_mean
+outTab_df_mean_TCGA$genesetid = str_remove_all(outTab_df_mean_TCGA$genesetid,
+                                               "HALLMARK_")
+```
+
+```{r}
+#plot
+plot_bar(df = outTab_df_mean_TCGA, my_pal = my_pal)
+```
 
