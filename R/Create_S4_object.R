@@ -161,7 +161,7 @@ CreatePathObject = function(gmt_path=NULL, gene_exp_counts=NULL,
   gene_map$start = as.numeric(gene_map$start)
   gene_map$end = as.numeric(gene_map$end)
 
-  if (!str_detect(gene_map$chr, "(C|c)hr")){
+  if (!any(isTRUE(str_detect(gene_map$chr, "(C|c)hr")))){
     gene_map$chr = str_c("chr", gene_map$chr, sep = '')
   }
 

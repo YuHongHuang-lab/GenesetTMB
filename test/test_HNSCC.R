@@ -6,7 +6,7 @@
 #devtools::load_all()
 #install.packages("rmarkdown")
 
-devtools::install_github("YuHongHuang-lab/IWHMB")
+#devtools::install_github("YuHongHuang-lab/IWHMB")
 
 
 library(IWHMB)
@@ -18,13 +18,13 @@ my_pal = my_pal[!is.na(my_pal)]
 my_pal = my_pal[!duplicated(my_pal)]
 
 
-TCGA_PathObj = CreatePathObject(gmt_path="test/data/h.all.v7.4.symbols.gmt",
-                                gene_exp_counts='test/data/TCGA_HNSC_gene_exp_count.csv',
-                                gene_map='test/data/Homo_sapiens.GRCh38.99.chr.gtf',
-                                gene_exp_TPM="test/data/TCGA_HNSC_gene_exp_TPM_tumor.csv",
-                                ppi_data_path="test/data/ppi_dataset_all.txt",
+TCGA_PathObj = CreatePathObject(gmt_path="E:/source_code/data/h.all.v7.4.symbols.gmt",
+                                gene_exp_counts='E:/source_code/data/TCGA_HNSC_gene_exp_count.csv',
+                                gene_map='E:/source_code/data/Homo_sapiens.GRCh38.99.chr.gtf',
+                                gene_exp_TPM="E:/source_code/data/TCGA_HNSC_gene_exp_TPM_tumor.csv",
+                                ppi_data_path="E:/source_code/data/ppi_dataset_all.txt",
                                 cor_method=1,
-                                mut_exp="test/data/TCGA-HNSC_UCSC.varscan2_snv.tsv.gz",
+                                mut_exp="E:/source_code/data/TCGA-HNSC_UCSC.varscan2_snv.tsv.gz",
                                 count_log=FALSE,
                                 TPM_log=FALSE,
                                 GeneSetCollect=FALSE,

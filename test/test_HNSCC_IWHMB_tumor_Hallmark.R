@@ -1,0 +1,512 @@
+#library(devtools)
+#devtools::load_all()
+
+library(survival)
+library(jskm)
+
+library(ggsci)
+my_pal = c(pal_npg()(12), pal_aaas()(12), pal_futurama()(12))
+my_pal = my_pal[!is.na(my_pal)]
+my_pal = my_pal[!duplicated(my_pal)]
+
+#plot function
+plot_bar = function(mutsig=NULL, sample_info=NULL,
+                    feature='liver_cancer',
+                    col_palatte=my_pal,
+                    cluster="cluster", scale=FALSE,
+                    cut_max=10,
+                    plot_model=1,
+                    ylim_set=NULL,
+                    point_size=0.8,
+                    point_alpha=0.8,
+                    point_width=0.1,
+                    show.legend=TRUE){
+  library(ggpubr)
+  library(rstatix)
+  library(cowplot)
+
+  feature = rlang::sym(feature)
+  cluster = rlang::sym(cluster)
+  stopifnot(ncol(mutsig)==2)
+  mutsig = mutsig%>%na.omit()
+
+  colnames(mutsig) = c("feature", "cluster")
+  #stat_test = mutsig%>%t_test(eval(expr(feature~cluster)))%>%
+  #add_xy_position("cluster")
+  #stat_test = stat_test[stat_test$p<0.01, ]
+  if (is.null(ylim_set)){
+    ggplot(mutsig, aes(cluster, feature)) +
+      geom_boxplot(aes(fill=cluster), outlier.colour = NA, width=0.3,
+                   show.legend = show.legend)+
+      scale_fill_manual(values = my_pal[1:length(unique(mutsig$cluster))])+
+      scale_color_manual(values = my_pal[1:length(unique(mutsig$cluster))])+
+      #stat_pvalue_manual(stat_test, label = "p")+
+      xlab("")+theme_cowplot()
+  }else {
+    ggplot(mutsig, aes(cluster, feature)) +
+      geom_boxplot(aes(fill=cluster), outlier.colour = NA, width=0.3) +
+      scale_fill_manual(values = my_pal[1:length(unique(mutsig$cluster))])+
+      scale_color_manual(values = my_pal[1:length(unique(mutsig$cluster))])+
+      #stat_pvalue_manual(stat_test, label = "p")+
+      xlab("")+theme_cowplot()+ylim(ylim_set[1], ylim_set[2])
+  }
+}
+
+
+plot_bar2 = function(df, my_pal, yintercept_lines=NULL,
+                     angle = 45, ...){
+  library(cowplot)
+  library(ggpubr)
+  args = ensyms(...)
+
+  args_id = names(args)
+  args = as.vector(unlist(map(args, rlang::as_string)))
+  stopifnot(setdiff(args, colnames(df))==0)
+  df = df[, args]
+  colnames(df) = c("id", "sim_index", "cluster")
+
+  p = ggplot(df, aes(id, sim_index))+geom_col(aes(fill=cluster), width = 0.4)+
+    scale_fill_manual(values = my_pal[1:length(unique(df$cluster))])+
+    ylab(args_id[2])+xlab("")+scale_y_continuous(expand = c(0, 0))+
+    theme_cowplot()+theme(legend.position = 'top',
+                          legend.direction = "horizontal",
+                          axis.text.x = element_text(size = 6, colour = "black"))+
+    rotate_x_text(angle = angle)+
+    geom_hline(yintercept = yintercept_lines,
+               linetype="dotdash", color='gray30')
+  return(p)
+}
+
+
+
+
+plot_stack = function(df, my_pal,
+                      shape="horizontal",
+                      model=1,
+                      ...){
+  stopifnot(ncol(df)>=2)
+  args <- ensyms(...)
+
+  args_new = map(args, rlang::as_string)
+  feature = args_new[['feature']]
+  cluster = args_new[['cluster']]
+
+  stopifnot(length(intersect(colnames(df), c(feature, cluster)))==2)
+  df = df[, c(feature, cluster)]
+  df = df[df[, 1]!="", ]
+  df = df%>%na.omit()
+  colnames(df) = c('feature', 'cluster')
+
+  if (!is.factor(df$feature)){
+    df$feature = as.character(df$feature)
+  }
+
+
+  mytable = xtabs(~cluster+feature, data = df)
+  pvalue = chisq.test(mytable)$p.value
+
+  df = df%>%group_by(cluster, feature)%>%summarise(count=n())
+
+  theme_main = function(){
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text.x = element_text(size = 12, colour = "black"),
+      axis.text.y = element_text(size = 12, colour = "black"),
+      panel.border = element_rect(size = 0.7, linetype = 'solid', colour = "black"),
+      legend.position = 'right'
+    )
+  }
+  if (model == 1){
+    position = "fill"
+  }else {
+    position = "stack"
+  }
+
+
+  if (shape=="horizontal"){
+    ggplot(df, aes(x = cluster,
+                   y = count,
+                   fill = feature))+
+      geom_bar(stat = "identity", width = 0.8, position = position)+
+      scale_fill_manual(values = my_pal[1:length(unique(df$feature))],
+                        name = str_c(feature, pvalue, sep = '\n'))+
+      labs(x="", y="Ration")+theme_bw()+
+      scale_y_continuous(position = "right")+
+      theme_main()
+  }else {
+    ggplot(df, aes(x = cluster,
+                   y = count,
+                   fill = feature))+
+      geom_bar(stat = "identity", width = 0.8, position = position)+
+      scale_fill_manual(values = my_pal[1:length(unique(df$feature))],
+                        name = str_c(feature, pvalue, sep = '\n'))+
+      labs(x="", y="Ration")+theme_bw()+
+      scale_y_continuous(position = "right")+coord_flip()+
+      cowplot::theme_cowplot()
+  }
+
+}
+
+
+plot_Cloud_rain_map = function(df, name_rank, my_pal,
+                               legend_position,
+                               x_name, y_name,
+                               y_intercept){
+  library(cowplot)
+  library(gghalves)
+  stopifnot(length(my_pal)>=length(name_rank))
+  stopifnot(ncol(df)==2)
+  stopifnot(length(unique(df[, 2]))==length(name_rank))
+
+  num = length(unique(df[, 2]))
+  name_id = colnames(df)
+  df[, 2] = factor(df[, 2], levels = name_rank)
+
+  theme_legend = function(){
+    theme(
+      legend.key = element_blank(),
+      legend.text = element_text(color = 'black', size = 10),
+      legend.spacing = unit(0.1, 'cm'),
+      #legend.spacing.x = unit(0.1, 'cm'),
+      #legend.spacing.y = unit(0.1, 'cm'),
+      legend.background = element_blank(),
+      legend.position = legend_position
+    )
+  }
+  ggplot(df, aes(base::eval(rlang::sym(name_id[2])),
+                 base::eval(rlang::sym(name_id[1])),
+                 fill = base::eval(rlang::sym(name_id[2]))))+
+    geom_half_violin(side="r",
+                     position = position_nudge(x=0.25, y=0),
+                     adjust = 1,
+                     width=2)+
+    geom_boxplot(width=0.1, position = position_nudge(x=0.25, y=0),
+                 show.legend = FALSE)+
+    geom_hline(aes(yintercept=y_intercept), linetype="dashed")+
+    guides(fill=guide_legend(title = name_id[2]))+
+    coord_flip()+xlab(x_name)+ylab(y_name)+scale_fill_manual(values = my_pal[1:num])+
+    theme_cowplot()+theme_legend()
+}
+
+
+
+
+
+TCGA_PathObj = readRDS("../YuHong_huang_RS4/tmp/TCGA_PathObj.rds")
+gmt_list = TCGA_PathObj@module1$geneset
+Hallmark_SHH = gmt_list[["HALLMARK_HEDGEHOG_SIGNALING"]]
+
+sample_info_HPV = TCGA_PathObj@module1$sample_info[, "HPV", drop=FALSE]
+load(file = "../source_code/data/TCGA_clinical_RData")
+load(file = "../source_code/data/TCGA_imm_feature.RData")
+load(file = "../source_code/data/TCGA_stemness.RData")
+sample_info = readRDS("../source_code/step4_RWR/TCGA_HNSCC_survival_info.rds")
+
+sample_info_TCGA = column_to_rownames(sample_info_TCGA, var = "ID")
+gsva_TCAG_Imm = as.data.frame(t(gsva_TCAG_Imm))
+
+TCGA_IWHMB = TCGA_PathObj@module1$pathway_mutscore_stdrow
+TCGA_IWHMB = as.data.frame(t(TCGA_IWHMB))
+sample_info$SHH = TCGA_IWHMB[rownames(sample_info), "HEDGEHOG_SIGNALING"]
+
+sample_info$stemness_DNA = stemness_DNA[rownames(sample_info), "mDNAsi"]
+sample_info$stemness_RNA = stemness_RNA[rownames(sample_info), "mRNAsi"]
+
+sample_info = cbind(sample_info, cell_exp_TCGA[rownames(sample_info), ])
+sample_info = cbind(sample_info, gsva_TCAG_Imm[rownames(sample_info), ])
+sample_info = cbind(sample_info, sample_info_TCGA[rownames(sample_info), ])
+
+sample_info$SHH_a = if_else(sample_info$SHH>0, 1, 2)
+sample_info$HPV = sample_info_HPV[rownames(sample_info), "HPV"]
+sample_info_TCGA = sample_info
+
+
+#NON HPV
+sample_info_TCGA_nonhpv = sample_info_TCGA[sample_info_TCGA$HPV=="negative", ]
+boxplot(stemness_RNA~SHH_a, data = sample_info_TCGA_nonhpv)
+diff=survdiff(Surv(OS.time, OS) ~SHH_a, data=sample_info_TCGA_nonhpv)
+pValue=1-pchisq(diff$chisq, df=length(diff$n) - 1)
+
+sample_info_TCGA_nonhpv$OS.time = sample_info_TCGA_nonhpv$OS.time/365
+fit = survfit(Surv(OS.time, OS) ~SHH_a, data=sample_info_TCGA_nonhpv)
+
+pdf(file = "../source_code/data/TCGA_Shh_survival.pdf", width = 4, height = 3)
+jskm(fit, table = FALSE, pval = TRUE, label.nrisk = "No. at risk",
+     size.label.nrisk = 8, xlabs = 'Time(Day)', ylabs = 'Survival',
+     ystrataname = 'cluster', marks = FALSE, showpercent = FALSE,
+     legend = TRUE)+
+  scale_color_manual(values = rev(my_pal[1:2]))+ggtitle("")+
+  theme(legend.position = "none")
+dev.off()
+
+
+outTab = data.frame()
+for (name in colnames(sample_info_TCGA_nonhpv)[4:(ncol(sample_info_TCGA_nonhpv)-5)]){
+  a = sample_info_TCGA_nonhpv$SHH_a
+  b = sample_info_TCGA_nonhpv[, name]
+
+  a = a[!is.na(b)]
+  b = b[!is.na(b)]
+
+  a = a[b>0]
+  b = b[b>0]
+
+  b_1 = b[a==1]
+  b_2 = b[a==2]
+  Fold = mean(b_1) - mean(b_2)
+  p = tryCatch({t.test(b_1, b_2)$p.value},
+               error=function(m){1})
+  outTab = rbind(outTab, cbind(name=name, pvalue=p, Fold=Fold))
+}
+outTab$pvalue = as.numeric(outTab$pvalue)
+
+outTab_TCGA_nohpv = outTab
+
+#plot
+sample_info_TCGA_nonhpv$SHH_a = if_else(sample_info_TCGA_nonhpv$SHH_a==1, "MT", "WT")
+plot_stack(df = sample_info_TCGA_nonhpv, my_pal = my_pal,
+           feature = clinical_stage, cluster=SHH_a)
+plot_stack(df = sample_info_TCGA_nonhpv, my_pal = my_pal,
+           feature = Distant, cluster=SHH_a)
+
+pdf(file = "../source_code/data/TCGA_Shh.pdf", width = 4, height = 3)
+plot_bar(mutsig=sample_info_TCGA_nonhpv[sample_info_TCGA_nonhpv$`T_cell_co-inhibition`>0,
+                                        c("T_cell_co-inhibition", "SHH_a")],
+         feature='T_cell_co-inhibition',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_TCGA_nonhpv[sample_info_TCGA_nonhpv$`T_cell_co-stimulation`>0,
+                                        c("T_cell_co-stimulation", "SHH_a")],
+         feature='T_cell_co-stimulation',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_TCGA_nonhpv[sample_info_TCGA_nonhpv$`Inflammation-promoting`>0,
+                                        c("Inflammation-promoting", "SHH_a")],
+         feature='Inflammation-promoting',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_TCGA_nonhpv[sample_info_TCGA_nonhpv$`Check-point`>0,
+                                        c("Check-point", "SHH_a")],
+         feature='Check-point',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_TCGA_nonhpv[sample_info_TCGA_nonhpv$`HLA`>0,
+                                        c("HLA", "SHH_a")],
+         feature='HLA',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_TCGA_nonhpv[sample_info_TCGA_nonhpv$`T cells regulatory (Tregs)`>0,
+                                        c("T cells regulatory (Tregs)", "SHH_a")],
+         feature='T cells regulatory (Tregs)',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+dev.off()
+
+
+#HPV
+
+
+#CPTAC
+
+load(file = "../source_code/data/CPTAC_clinical.RData")
+load(file = "../source_code/data/CPTAC_imm_feature.RData")
+load(file = "../source_code/data/CPTAC_stemness.RData")
+gsva_CPTAC_imm = as.data.frame(t(gsva_CPTAC_imm))
+sample_info_CPTAC_clinical = sample_info_CPTAC
+rownames(sample_info_CPTAC_clinical) =  NULL
+sample_info_CPTAC_clinical = column_to_rownames(sample_info_CPTAC_clinical, var = "ID")
+sample_info_CPTAC_clinical = sample_info_CPTAC_clinical[, 3:ncol(sample_info_CPTAC_clinical)]
+
+
+sample_info_CPTAC = readRDS("../source_code/step4_RWR/CPTAC_HNSCC_survival_info.rds")
+sample_info_CPTAC = sample_info_CPTAC[, 1:2]
+
+CPTAC_PathObj = readRDS("../YuHong_huang_RS4/tmp/CPTAC_PathObj.rds")
+CPTAC_IWHMB = CPTAC_PathObj@module1$pathway_mutscore_stdrow
+CPTAC_IWHMB = as.data.frame(t(CPTAC_IWHMB))
+
+
+sample_info_CPTAC$SHH = CPTAC_IWHMB[rownames(sample_info_CPTAC), "HEDGEHOG_SIGNALING"]
+
+sample_info_CPTAC$stemness_DNA = CPTAC_stemness_DNA[rownames(sample_info_CPTAC)]
+sample_info_CPTAC$stemness_RNA = CPTAC_stemness_RNA[rownames(sample_info_CPTAC)]
+
+sample_info_CPTAC = cbind(sample_info_CPTAC, cell_exp_CPTAC[rownames(sample_info_CPTAC), ])
+sample_info_CPTAC = cbind(sample_info_CPTAC, gsva_CPTAC_imm[rownames(sample_info_CPTAC), ])
+sample_info_CPTAC = cbind(sample_info_CPTAC, sample_info_CPTAC_clinical[rownames(sample_info_CPTAC), ])
+
+sample_info_CPTAC$SHH_a = if_else(sample_info_CPTAC$SHH>0, 1, 2)
+
+boxplot(stemness_RNA~SHH_a, data = sample_info_CPTAC)
+diff=survdiff(Surv(OS.time, OS) ~SHH_a, data=sample_info_CPTAC)
+pValue=1-pchisq(diff$chisq, df=length(diff$n) - 1)
+
+fit = survfit(Surv(OS.time, OS) ~SHH_a, data=sample_info_CPTAC)
+
+pdf(file = "../source_code/data/CPTAC_Shh_survival.pdf", width = 4, height = 3)
+jskm(fit, table = FALSE, pval = TRUE, label.nrisk = "No. at risk",
+     size.label.nrisk = 8, xlabs = 'Time(Day)', ylabs = 'Survival',
+     ystrataname = 'cluster', marks = FALSE, showpercent = FALSE,
+     legend = TRUE)+
+  scale_color_manual(values = rev(my_pal[1:2]))+ggtitle("")+
+  theme(legend.position = "none")
+dev.off()
+
+
+outTab = data.frame()
+for (name in colnames(sample_info_CPTAC)[4:(ncol(sample_info_CPTAC)-3)]){
+  a = sample_info_CPTAC$SHH_a
+  b = sample_info_CPTAC[, name]
+
+  a = a[!is.na(b)]
+  b = b[!is.na(b)]
+
+  a = a[b>0]
+  b = b[b>0]
+
+
+  b_1 = b[a==1]
+  b_2 = b[a==2]
+
+  Fold = mean(b_1) - mean(b_2)
+  p = tryCatch({t.test(b_1, b_2)$p.value},
+               error=function(m){1})
+  outTab = rbind(outTab, cbind(name=name, pvalue=p, Fold=Fold))
+}
+outTab$pvalue = as.numeric(outTab$pvalue)
+
+outTab_CPTAC =outTab
+
+
+#plot
+sample_info_CPTAC$SHH_a = if_else(sample_info_CPTAC$SHH_a==1, "MT", "WT")
+pdf(file = "../source_code/data/CPTAC_Shh.pdf", width = 4, height = 3)
+plot_bar(mutsig=sample_info_CPTAC[sample_info_CPTAC$`T_cell_co-inhibition`>0,
+                                  c("T_cell_co-inhibition", "SHH_a")],
+         feature='T_cell_co-inhibition',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_CPTAC[sample_info_CPTAC$`T_cell_co-stimulation`>0,
+                                  c("T_cell_co-stimulation", "SHH_a")],
+         feature='T_cell_co-stimulation',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_CPTAC[sample_info_CPTAC$`Inflammation-promoting`>0,
+                                  c("Inflammation-promoting", "SHH_a")],
+         feature='Inflammation-promoting',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_CPTAC[sample_info_CPTAC$`Check-point`>0,
+                                  c("Check-point", "SHH_a")],
+         feature='Check-point',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_CPTAC[sample_info_CPTAC$`HLA`>0,
+                                  c("HLA", "SHH_a")],
+         feature='HLA',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+
+plot_bar(mutsig=sample_info_CPTAC[sample_info_CPTAC$`T cells regulatory (Tregs)`>0,
+                                  c("T cells regulatory (Tregs)", "SHH_a")],
+         feature='T cells regulatory (Tregs)',
+         cluster = "SHH_a",
+         col_palatte=my_pal,
+         plot_model = 2,
+         ylim_set = NULL,
+         show.legend = FALSE)
+dev.off()
+
+
+library(GSEABase)
+library(homologene)
+install.packages("homologene")
+GREEDS = lines <- strsplit(readLines("../YuHong_huang_RS4/tmp/GREEDS/single_gene_perturbations-v1.0.gmt"), "\t")
+names = unlist(lapply(GREEDS, function(x)x[1]))
+GREEDS = lapply(GREEDS, function(x)x[3:length(x)])
+names(GREEDS) = names
+
+gmt = getGmt("../pan_cancer/database/gmt/msigdb.v7.4.symbols.gmt")
+names = names(gmt)
+gmt = lapply(gmt, function(x)x@geneIds)
+names(gmt) = names
+
+#1
+HH_genes_1 = GREEDS[["Shh-up"]]
+HH_genes_2 = GREEDS[["Shh-dn"]]
+HH_genes = unique(c(HH_genes_1, HH_genes_2))
+HH_genes = homologene(HH_genes, inTax = 10090, outTax = 9606)
+HH_genes = HH_genes$`9606`
+
+# ECM community 1
+community_1 = readRDS("../source_code/step4_RWR/cluster_df.rds")
+community_1 = community_1[community_1$cluster==1, "geneid"]
+community_1 = c(community_1, "CD276")
+
+intersect(community_1, HH_genes)
+phyper(10-1, m = 500, n = 21500, k = 80, lower.tail = FALSE)
+
+
+
+# 2
+HH_genes2_1 = gmt[["YAUCH_HEDGEHOG_SIGNALING_PARACRINE_UP"]]
+HH_genes2_2 = gmt[["YAUCH_HEDGEHOG_SIGNALING_PARACRINE_DN"]]
+HH_genes2 = unique(c(HH_genes2_1, HH_genes2_2))
+intersect(community_1, HH_genes2_2)
+
+
+# 3
+RWR_genes = readRDS("../source_code/step4_RWR/RWR_ECM.rds")
+RWR_genes = arrange(RWR_genes, desc(Score))%>%dplyr::slice(1:500)%>%pull(NodeNames)
+intersect(Hallmark_SHH, RWR_genes)
+phyper(7-1, m = 500, n = 21500, k = 36, lower.tail = FALSE)
+
+
+# 4
+RWR_HH = readRDS("../source_code/step4_RWR/RWR_HH_geneset.rds")
+RWR_HH = arrange(RWR_HH, desc(Score))%>%dplyr::slice(1:600)%>%pull(NodeNames)
+intersect(RWR_HH, community_1)
+
